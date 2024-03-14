@@ -3,6 +3,11 @@ use polars::df;
 use polars_lazy::frame::*;
 use polars_lazy::prelude::*;
 use crate::dataframemerger::*;
+use std::time::{Instant, Duration};
+use std::thread;
+use std::iter::*;
+use std::cmp::Ordering;
+use polars::frame::row::Row;
 // use fuzzy_matcher::FuzzyMatcher;
 // use fuzzy_matcher::skim::SkimMatcherV2;
 // use scorer::*;
@@ -17,7 +22,7 @@ pub mod dataframemerger;
 // - thresholds: a vector of thresholds. A threshold is a floating point between 0 and 1 (inclusive)
 //               where two keys are rejected as a match if their similarity score is below the threshold
 // - scorers: a vector of scorers (functions), which take in two strings and output a 
-//            similarity score (floating point between 0 and 1, inclusive)
+//            similarity score (floating point between 0 and 1, inclusive)s
 
 fn main() {
     let df_a: DataFrame = df![
@@ -29,49 +34,15 @@ fn main() {
     let df_b: DataFrame = df![
         "foo" => [1, 1, 1],
         "bar" => ["a", "c", "c"],
-        "ham" => ["let", "var", "const"]
+        "ham" => ["le", "var", "const"]
     ].expect("Didnt read in df_b");
 
-    let s1: String = String::from("hello");
-    let s2: String =  String::from("world");
+    // Calling a slow function, it may take a while
+    // slow_function();
 
-    test_scorer(&s1, &s2);
+    // df_a.hstack(data_frame_to_merge.get_columns());
 
-    println!("{:?}", df_a);
-
-    let df_b = df_b.lazy()
-    .group_by([col("bar")])
-    .agg([
-        col("foo").count().alias("foo_count"),
-    ])
-    .collect();
-    
-    println!("{:?}", df_b);
-
-    fn test_scorer(string1: &str, string2: &str) -> f32 {
-        println!("{} is string 1 and {} is string 2", string1, string2);
-        1.0
-    };
-
-    let temp = test_scorer;
-
-    let data_frame_merger = DataFrameMerger::new();
-
-    let data_frame_merger = DataFrameMerger { 
-        hierarchy: Vec::new(), 
-        thresholds: Vec::new(), 
-        scorers: vec![temp],
-    };
-
-    for func in data_frame_merger.scorers {
-        func("hi", "me");
-    }
-
-    // let list_of_strings: Vec<String> =
-    // list_of_numbers.iter().map(ToString::to_string).collect();
-    let mut x = vec![1, 2, 3];
-    println!("{:?}", x);
-    x[4] = 2;
-    println!("{:?}", x);
-
+    println!("{:#?}", df_a["d"]);
+    // let mut dataframemerger: DataFrameMerger = DataFrameMerger::new();
+    // dataframemerger.merge(df_a, df_b, "a", "bar");
 }
