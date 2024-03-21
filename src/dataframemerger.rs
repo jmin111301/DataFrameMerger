@@ -8,15 +8,16 @@ use polars::frame::row::Row;
 use std::ops::Index;
 use itertools::{izip, enumerate};
 
-pub struct DataFrameMerger{
-    pub hierarchy: Vec<Expr>,
+pub struct DataFrameMerger<'a>{
+    pub hierarchy: Vec<&'a Expr>,
     pub thresholds: Vec<f32>,
     // !!! DESIGN CHOICE !!!
     // For our scorers, do we want their output to be from [0, 1] or from [0, 100]
-    pub scorers: Vec<fn(&str, &str) -> f32>, // !!!NOTE TO SELF!!!: Look into difference between fn and Fn
+    pub scorers: Vec<&'a fn(&str, &str) -> f32>, // !!!NOTE TO SELF!!!: Look into difference between fn and Fn
 }
 
-impl DataFrameMerger {
+
+impl<'a> DataFrameMerger<'a> {
     pub fn new() -> Self {
         DataFrameMerger { 
             hierarchy: Vec::new(), 
@@ -26,11 +27,11 @@ impl DataFrameMerger {
     }
 
     /// Adds a hierarchy to instance
-    pub fn add_hierarchy(&mut self, filter: Option<Expr>, threshold: f32, scorer: fn(&str, &str) -> f32) {      
+    pub fn add_hierarchy(&mut self, filter: Option<&Expr>, threshold: f32, scorer: &fn(&str, &str) -> f32) {      
         // Define a default filter
-        let filter: Expr = match filter {
+        let filter: &'a Expr = match filter {
             Some(x) => x,
-            None => polars_lazy::dsl::all(),
+            None => &polars_lazy::dsl::all(),
         };
         
         self.hierarchy.push(filter);
@@ -39,11 +40,11 @@ impl DataFrameMerger {
     }
 
     /// Allows user to set the hierarchy at a given idx
-    pub fn set_hierarchy(&mut self, idx: usize, filter: Option<Expr>, threshold: f32, scorer: fn(&str, &str) -> f32) { 
+    pub fn set_hierarchy(&mut self, idx: usize, filter: Option<&Expr>, threshold: f32, scorer: &fn(&str, &str) -> f32) { 
         // Define a default filter
-        let filter: Expr = match filter {
+        let filter: &'a Expr = match filter {
             Some(x) => x,
-            None => polars_lazy::dsl::all(),
+            None => &polars_lazy::dsl::all(),
         };
         
         // !!! DESIGN CHOICE !!!
@@ -62,9 +63,6 @@ impl DataFrameMerger {
         self.scorers.clear();
     }
 
-    ///
-    /// 
-    /// 
     // , num_threads: &'static usize
     // Potential design to make this whole fking thing work
     // merge(), we pass in variables from the struct. 
@@ -78,7 +76,7 @@ impl DataFrameMerger {
         let mut builder_data_frame: Vec<polars::frame::row::Row<'_>> = vec![];
 
         thread::scope(|s| {
-            s.spawn(|| {
+            s.spawn(move || {
                 // Iterate through the 
                 for (i, (hierarchy, threshold, scorer)) in enumerate(izip!(&self.hierarchy, &self.thresholds, &self.scorers)) {
                     println!("{}", i);
@@ -91,9 +89,10 @@ impl DataFrameMerger {
                         
                         println!("left_key {} from the spawned thread!", left_key);
                         // APPLY hierarchies here
-                        let scores: Vec<f32> = other
+                        // Make sure that the scores are in order?
+                        let scores: Vec<f32> = other.clone()
                             .lazy()
-                            .filter(self.hierarchy[i])
+                            .filter(*self.hierarchy[i])
                             .collect()
                             .expect("Failed to read in DataFrame")
                             .index(right_on)
