@@ -1,13 +1,11 @@
 use polars::prelude::*;
 use polars::df;
-use polars_lazy::frame::*;
-use polars_lazy::prelude::*;
 use crate::dataframemerger::*;
-use std::time::{Instant, Duration};
+use std::time::{Instant};
+use std::ops::Index;
+use std::cmp;
 use std::thread;
-use std::iter::*;
-use std::cmp::Ordering;
-use polars::frame::row::Row;
+use rayon::iter::*;
 // use fuzzy_matcher::FuzzyMatcher;
 // use fuzzy_matcher::skim::SkimMatcherV2;
 // use scorer::*;
@@ -26,23 +24,27 @@ pub mod dataframemerger;
 
 fn main() {
     let df_a: DataFrame = df![
-        "a" => [1, 2, 1, 1],
-        "b" => ["a", "b", "c", "c"],
-        "c" => [0, 1, 2, 3]
+        "counts" => [1, 2, 1, 1],
+        "name" => ["Jonathan", "Jack", "Amanda", "Justin"],
+        "num_cups" => [0, 1, 2, 3]
     ].expect("Didnt read in df_a");
     
     let df_b: DataFrame = df![
-        "foo" => [1, 1, 1],
-        "bar" => ["a", "c", "c"],
-        "ham" => ["le", "var", "const"]
+        "num_cars" => [1, 1, 1, 2],
+        "names" => ["Jack", "Jonathan", "Aman", "Jussie"],
+        "fav_food" => ["pasta", "candy", "sushi", "cake"]
     ].expect("Didnt read in df_b");
 
-    // Calling a slow function, it may take a while
-    // slow_function();
+    let mut dataframemerger: DataFrameMerger = DataFrameMerger::new();
+    // Will later be replaced by the struct fields: thresholds, hierarchies, and scorers
+    fn string_comparer(s1: &str, s2: &str) -> f32 {
+        (1.0 -  (((s1.len() as i32) - (s2.len() as i32)) as f32).abs()/(cmp::max(s1.len(), s2.len()) as f32)) as f32
+    }
 
-    // df_a.hstack(data_frame_to_merge.get_columns());
+    dataframemerger.add_hierarchy(None, 0.75, string_comparer);
+    println!("{:#?}", dataframemerger.thresholds);
 
-    println!("{:#?}", df_a["d"]);
-    // let mut dataframemerger: DataFrameMerger = DataFrameMerger::new();
-    // dataframemerger.merge(df_a, df_b, "a", "bar");
+    println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
+    dataframemerger.merge(df_a, df_b, "name", "names");
+    
 }

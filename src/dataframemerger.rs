@@ -5,6 +5,8 @@ use std::time::{Instant, Duration};
 use std::thread;
 use std::iter::*;
 use polars::frame::row::Row;
+use std::ops::Index;
+use itertools::{izip, enumerate};
 
 pub struct DataFrameMerger{
     pub hierarchy: Vec<Expr>,
@@ -22,9 +24,6 @@ impl DataFrameMerger {
             scorers: Vec::new()
         }
     }
-
-    /// Don't really need this anymore since rust is safe!
-    fn valid_hierarchy(&self) { }
 
     /// Adds a hierarchy to instance
     pub fn add_hierarchy(&mut self, filter: Option<Expr>, threshold: f32, scorer: fn(&str, &str) -> f32) {      
@@ -64,66 +63,84 @@ impl DataFrameMerger {
     }
 
     ///
-    pub fn merge(&mut self, data_frame: DataFrame, other: DataFrame, left_on: usize, right_on: usize) -> DataFrame { 
-        let now = Instant::now();
+    /// 
+    /// 
+    // , num_threads: &'static usize
+    // Potential design to make this whole fking thing work
+    // merge(), we pass in variables from the struct. 
 
-        // Will later be replaced by the struct fields: thresholds, hierarchies, and scorers
-        let threshold = 0.75; 
-        fn string_comparer(s1: &str, s2: &str) -> f32 {
-            (((s1.len() + s2.len()) as f32)/(2 as f32)) as f32
-        }
+    pub fn merge(&self, data_frame: DataFrame, other: DataFrame, left_on: &'static str, right_on: &'static str) -> DataFrame { 
+        let now = Instant::now();      
+        // Spawn X threads  
+        let mut df: DataFrame = DataFrame::empty();
+        // Issue is with the thread??? 
 
-        let handle = thread::spawn(move || {
-            let mut builder_data_frame: Vec<polars::frame::row::Row<'_>> = vec![];
-            for left_key in data_frame[left_on].str().expect("Failed to get left_column").iter() {
-                // need to handle None case for left column
-                println!("left_key {} from the spawned thread!", left_key.unwrap());
-                
-                let scores: Vec<f32> = other[right_on]
-                    .str()
-                    .expect("Failed to get right_column")
-                    .iter()
-                    .map(|option_right_key| { 
-                        let output = match option_right_key {
-                            None => 0 as f32,
-                            Some(key) => string_comparer(left_key.unwrap(), key)
+        let mut builder_data_frame: Vec<polars::frame::row::Row<'_>> = vec![];
+
+        thread::scope(|s| {
+            s.spawn(|| {
+                // Iterate through the 
+                for (i, (hierarchy, threshold, scorer)) in enumerate(izip!(&self.hierarchy, &self.thresholds, &self.scorers)) {
+                    println!("{}", i);
+                    for left_key in data_frame.index(left_on).str().expect("Failed to get left_column").iter() {
+                        // Handle the case when left_key is null
+                        let left_key = match left_key {
+                            Some(x) => x,
+                            None => continue,
                         };
-                        output
-                    })
-                    .collect();
+                        
+                        println!("left_key {} from the spawned thread!", left_key);
+                        // APPLY hierarchies here
+                        let scores: Vec<f32> = other
+                            .lazy()
+                            .filter(self.hierarchy[i])
+                            .collect()
+                            .expect("Failed to read in DataFrame")
+                            .index(right_on)
+                            .str()
+                            .expect("Failed to get right_column")
+                            .iter()
+                            .map(|option_right_key| { 
+                                let output = match option_right_key {
+                                    None => 0 as f32,
+                                    Some(key) => scorer(left_key, key)
+                                };
+                                output
+                            })
+                            .collect();
 
-                let index_of_max: Option<usize> = scores
-                    .iter()
-                    .enumerate()
-                    .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                    .map(|(index, _)| index);
-                    
-                let right_index_to_merge = index_of_max.expect("Unable to identify max");
-                let highest_match_score: f32 = scores.into_iter().reduce(f32::max).unwrap();
-
-                // APPLY hierarchies here
-                
-                let row_to_append = if highest_match_score >= threshold {
-                    // Get the index of the other data-frame with the highest match score to the current key
-                    other.get_row(right_index_to_merge).expect("Failed to get the row by index")
-                } else {
-                    // Add a row of nulls
-                    Row::new(vec![])
-                };
-                builder_data_frame.push(row_to_append);
-
-            }
-
-            // Create the right data frame
-            let data_frame_to_merge = DataFrame::from_rows_and_schema(&builder_data_frame[..], &other.schema()).expect("");
-            data_frame.hstack(data_frame_to_merge.get_columns()).expect("Failed to combine data-frames")
+                        println!("{:#?}", scores);
+                        
+                        let index_of_max: Option<usize> = scores
+                            .iter()
+                            .enumerate()
+                            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                            .map(|(index, _)| index);
+                            
+                        let right_index_to_merge = index_of_max.expect("Unable to identify max");
+                        let highest_match_score: f32 = scores.into_iter().reduce(f32::max).unwrap();
+                        
+                        if highest_match_score >= *threshold {
+                            // Get the index of the other data-frame with the highest match score to the current key
+                            builder_data_frame.push(other.get_row(right_index_to_merge).expect("Failed to get the row by index"));
+                            // Need to break out of the inner loop, not the outer
+                        } else if i == self.thresholds.len() - 1 {
+                            // Add a row of nulls
+                            builder_data_frame.push(Row::new(vec![]));
+                        };
+                    }
+                }
+                let data_frame_to_merge = DataFrame::from_rows_and_schema(&builder_data_frame[..], &other.schema()).expect("");
+                df = data_frame.hstack(data_frame_to_merge.get_columns()).expect("Failed to combine data-frames");
+            });
         });
+    
         let elapsed_time = now.elapsed();
-        println!("{:?} time passed", elapsed_time);
+        println!("{:?} Time passed", elapsed_time);
 
-        let output = handle.join().unwrap();
-        println!("Thread output: {:#?}", output);
+        // let output: DataFrame = handle.join().unwrap();                
+        println!("Thread output: {:#?}", df);
         // Unpack the dataframe 
-        output
+        df
     }
 }

@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "fuzzy-matcher",
+ "itertools",
  "polars",
  "polars-lazy",
  "rayon",
@@ -440,6 +441,15 @@ checksum = "7b0b929d511467233429c45a44ac1dcaa21ba0f5ba11e4879e6ed28ddb4f9df4"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
 ]
 
 [[package]]
