@@ -1,4 +1,5 @@
 use polars::prelude::*;
+use polars_lazy::prelude::*;
 use polars::df;
 use crate::dataframemerger::*;
 use std::time::{Instant};
@@ -30,7 +31,7 @@ fn main() {
     ].expect("Didnt read in df_a");
     
     let df_b: DataFrame = df![
-        "num_cars" => [1, 1, 1, 2],
+        "age" => [16, 22, 25, 39],
         "names" => ["Jack", "Jonathan", "Aman", "Jussie"],
         "fav_food" => ["pasta", "candy", "sushi", "cake"]
     ].expect("Didnt read in df_b");
@@ -38,13 +39,15 @@ fn main() {
     let mut dataframemerger: DataFrameMerger = DataFrameMerger::new();
     // Will later be replaced by the struct fields: thresholds, hierarchies, and scorers
     fn string_comparer(s1: &str, s2: &str) -> f32 {
-        (1.0 -  (((s1.len() as i32) - (s2.len() as i32)) as f32).abs()/(cmp::max(s1.len(), s2.len()) as f32)) as f32
+        if s1 == s2 {
+            return 1.0;
+        }
+        0.0
     }
-
+    //println!("{:#?}", df_a);
     dataframemerger.add_hierarchy(None, 0.75, string_comparer);
     println!("{:#?}", dataframemerger.thresholds);
-
     println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
-    dataframemerger.merge(df_a, df_b, "name", "names");
+    dataframemerger.merge(df_a, df_b, "name", "names", false);
     
 }

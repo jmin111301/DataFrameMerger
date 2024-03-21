@@ -2,7 +2,7 @@ Important Notes
 - Lifetime references: https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html
 	- Read and understand why we need lifetimes.
 	- Notes:
-		- 
-		-
+		- How can we minimize the calls to .clone(), as they are highly inefficient.
+ 		-
 		-
 - 
