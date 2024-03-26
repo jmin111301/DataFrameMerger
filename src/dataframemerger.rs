@@ -1,6 +1,9 @@
 use polars_lazy::prelude::*;
+use std::sync::mpsc;
+use smartstring::*;
 use polars::prelude::*; 
 use polars::datatypes::*;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use std::thread;
@@ -35,6 +38,7 @@ impl DataFrameMerger {
             Some(x) => x,
             None => lit(true), 
         };
+        println!("{:#?}", filter);
         
         self.hierarchy.push(filter);
         self.thresholds.push(threshold);
@@ -80,11 +84,12 @@ impl DataFrameMerger {
         // Does rayon crate make more sense here?
         thread::scope(|s| {
             s.spawn(|| {
-                for left_key in data_frame.index(left_on).str().expect("Failed to get left_column").iter() {
+                'outer: for left_key in data_frame.index(left_on).str().expect("Failed to get left_column").iter() {
                     // Handle the case when left_key is null
                     let left_key = match left_key {
                         Some(x) => x,
                         None => {
+                            println!("left_key None");
                             // append an empty row to builder_data_frame
                             builder_data_frame.push(Row::new(Self::empty(other.width())));
                             continue
@@ -93,6 +98,7 @@ impl DataFrameMerger {
                     
                     // Check if left_key is inside the dictionary
                     if seen.contains_key(left_key) {
+                        println!("left_key already seen {}", left_key);
                         builder_data_frame.push(seen.get(left_key).unwrap().clone());
                         continue
                     }
@@ -100,39 +106,38 @@ impl DataFrameMerger {
                     // Iterate through each hierarchy 
                     for (hierarchy, threshold, scorer) in izip!(&self.hierarchy, &self.thresholds, &self.scorers) {
                         println!("left_key {} from the spawned thread!", left_key);
-                        // APPLY hierarchies here
-                        // Make sure that the scores are in order?
-                        
-                        // When searching for scores, try to leverage iterators as much as
-                        // possible.
-                        let scores: Vec<f32> = Self::get_match_scores(&other, left_key, right_on, hierarchy.clone(), *scorer);
-                        println!("{:#?}", scores);
-                        
-                        let highest_match_score: f32 = scores.clone().into_iter().reduce(f32::max).unwrap();
-                        if highest_match_score >= *threshold {
-                            // How are we going to handle non-unique matches? 
-                            // Also, my concern is that get_match_scores returns a filtered version
-                            // of other
-                            let right_index_to_merge: usize = scores
-                                .iter()
-                                .enumerate()
-                                .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                                .map(|(index, _)| index)
-                                .expect("Could not find maximum match in right index");
-                            // Get the index of the other data-frame with the highest match score to the current key
-                            
-                            let matched_row = other.get_row(right_index_to_merge).expect("Failed to get row of `other` by index");
-                            // Append the matched_row to the dictionary
-                            seen.insert(left_key, matched_row);
-                            // Push the row to our builder_data_frame
-                            builder_data_frame.push(seen.get(left_key).unwrap().clone());
-                            continue
-                        } 
-                        println!("NO MATCHES");
-                        // If we do not get any matches for all the hierarchies, append a null row   
+                        // Filter a clone of the original data_frame
+                        let filtered_data_frame = other
+                            .clone()
+                            .lazy()
+                            .filter(hierarchy.clone())
+                            .collect()
+                            .unwrap();
 
-                        builder_data_frame.push(Row::new(Self::empty(other.width())));
-                    }
+                        let (match_index, match_score): (usize, f32) = filtered_data_frame
+                            .index(right_on)
+                            .iter()
+                            .map(|s| match s {
+                                AnyValue::String(s) => {
+                                    scorer(s, left_key)
+                                    },
+                                AnyValue::Null => 0 as f32, 
+                                _ => panic!("'right_on' is not a String or &str dtype"),
+                            })
+                            .enumerate()
+                            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                            .map(|(index, score)| (index, score))
+                            .unwrap();
+                        if match_score >= *threshold {
+                            let row_to_append: Row<'_> = Row::new(filtered_data_frame.get_row(match_index).unwrap().0.iter().map(|v| v.clone().into_static().unwrap()).collect());
+                            println!("Row to append {:#?}", row_to_append);
+                            builder_data_frame.push(row_to_append);
+                            continue 'outer;
+                        }
+                    }        
+                    // If we do not get any matches for all the hierarchies, append a null row   
+                    println!("Append null");
+                    builder_data_frame.push(Row::new(Self::empty(other.width())));
                 }
                 println!("{:#?}", builder_data_frame);
                 let data_frame_to_merge = DataFrame::from_rows_and_schema(&builder_data_frame[..], &other.schema()).expect("");
@@ -154,27 +159,4 @@ impl DataFrameMerger {
         (0..n).map(|_| AnyValue::Null).collect()
     }
 
-    fn get_top_match() {
-
-    }
-
-    fn get_match_scores(dataframe: &DataFrame, left_key: &str, col_name: &str, screen: Expr, func: fn(&str, &str) -> f32) -> Vec<f32> {
-        dataframe.clone()
-            .lazy()
-            .filter(screen)
-            .collect()
-            .expect("Expr was not correctly specified")
-            .index(col_name)
-            .str()
-            .expect("Failed to get right_column")
-            .iter()
-            .map(|option_right_key| { 
-                let output = match option_right_key {
-                    None => 0 as f32,
-                    Some(key) => func(left_key, key)
-                };
-                    output
-                })
-            .collect::<Vec<_>>()
-    }
 }

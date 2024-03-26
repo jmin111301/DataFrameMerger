@@ -7,6 +7,8 @@ use std::ops::Index;
 use std::cmp;
 use std::thread;
 use rayon::iter::*;
+use::rust_fuzzy_search::fuzzy_compare;
+
 // use fuzzy_matcher::FuzzyMatcher;
 // use fuzzy_matcher::skim::SkimMatcherV2;
 // use scorer::*;
@@ -36,6 +38,17 @@ fn main() {
         "fav_food" => ["pasta", "candy", "sushi", "cake"]
     ].expect("Didnt read in df_b");
 
+    // Create DataFrame 1
+    let df1: DataFrame = df![
+        "names1" => ["Alice", "Alicia", "Alex", "Bob", "Barbara", "Charlie", "Charlotte"],
+        "age" => [25, 30, 35, 30, 35, 40, 45]
+    ].expect("Didnt read in df_a");
+   // Create DataFrame 2
+    let df2: DataFrame = df![
+        "names2" => ["Alice", "Alison", "Alexandra", "Bobby", "Babs", "Charles", "Charlene"],
+        "favorite_number" => [25, 30, 35, 30, 35, 40, 45]
+    ].expect("Didnt read in df2");
+
     let mut dataframemerger: DataFrameMerger = DataFrameMerger::new();
     // Will later be replaced by the struct fields: thresholds, hierarchies, and scorers
     fn string_comparer(s1: &str, s2: &str) -> f32 {
@@ -44,10 +57,26 @@ fn main() {
         }
         0.0
     }
-    //println!("{:#?}", df_a);
-    dataframemerger.add_hierarchy(None, 0.75, string_comparer);
-    println!("{:#?}", dataframemerger.thresholds);
-    println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
-    dataframemerger.merge(df_a, df_b, "name", "names", false);
+    use smartstring::*;
+    //let owned_data: Vec<AnyValue> = df2
+    //    .index("names2")
+    //    .iter()
+    //    .map(|s| match s {
+    //        AnyValue::String(s) => {
+    //            let mut converted_v = SmartString::new();
+    //            converted_v.push_str(s);
+    //            AnyValue::StringOwned(converted_v)
+    //        },
+    //        AnyValue::Null => AnyValue::Null, 
+    //        _ => panic!("Incorrect dtype"),
+    //    })
+    //    .collect();
+    //dataframemerger.add_hierarchy(Some(col("favorite_number").gt_eq(30)), 0.45, fuzzy_compare);
+    
+    //println!("{:#?}", dataframemerger.thresholds);
+    //println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
+    //dataframemerger.merge(df1, df2, "names1", "names2", false);
+    use rayon::prelude::*; 
+    (0..100).into_par_iter().for_each(|x| println!("{:#?}", x));  
     
 }
