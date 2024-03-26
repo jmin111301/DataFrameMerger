@@ -71,12 +71,10 @@ fn main() {
     //        _ => panic!("Incorrect dtype"),
     //    })
     //    .collect();
-    //dataframemerger.add_hierarchy(Some(col("favorite_number").gt_eq(30)), 0.45, fuzzy_compare);
+    dataframemerger.add_hierarchy(Some(col("favorite_number").gt_eq(30)), 0.45, fuzzy_compare);
     
-    //println!("{:#?}", dataframemerger.thresholds);
-    //println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
-    //dataframemerger.merge(df1, df2, "names1", "names2", false);
-    use rayon::prelude::*; 
-    (0..100).into_par_iter().for_each(|x| println!("{:#?}", x));  
+    println!("{:#?}", dataframemerger.thresholds);
+    println!("{:#?}", dataframemerger.scorers[0]("name", "names"));
+    dataframemerger.merge(df1, df2, "names1", "names2", false);
     
 }
